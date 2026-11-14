@@ -101,6 +101,45 @@ static void bench_cpu_mul(int num_threads){
 	printf("CPU multi_thread : %.0f Millions_ops/s (%d threads, %.2f s)\n", mops, num_threads, duree);
 }
 
+static void RAM(void){
+	const size_t taille_Mo = 256;
+	const size_t bytes = taille_Mo * 1024 * 1024;
+	const size_t n = bytes / sizeof(size_t);
+
+	size_t* buf = (size_t*)malloc(n*sizeof(size_t));
+	if(buf == NULL){
+		perror("don't allowed to access memory or the allocation failed");
+		return;
+	}
+
+	for(size_t i = 0; i < n; i++){
+		buf[i] = i;
+	}
+	double debut = now_sec();
+	for(size_t i = 0; i < n; i++){
+		buf[i] = i;
+	}
+
+	double fin = now_sec();
+	double write_gbs = (double)bytes / (fin - debut) / 1e9;
+
+	size_t sum = 0;
+	debut = now_sec();
+	for(size_t i = 0; i < n; i++){
+		sum+=buf[i];
+	}
+
+	fin = now_sec();
+	volatile size_t sink = sum;
+	(void)sink;
+	double read_gbs = (double)bytes / (fin - debut) / 1e9;
+
+	printf("Ram write	: %.1f GB/s\n", write_gbs);
+	printf("Ram read 	: %.1f GB/s\n", read_gbs);
+	
+	free(buf);
+}
+
 int main(void){
 
 	long cores = sysconf(_SC_NPROCESSORS_ONLN); //we're getting how much cpu cores are actually free;
@@ -121,6 +160,7 @@ int main(void){
 
 	bench_cpu();
 	bench_cpu_mul((int)cores);
+	RAM();
 
 	return 0;
 }
