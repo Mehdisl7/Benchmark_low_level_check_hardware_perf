@@ -6,6 +6,7 @@
 #include <err.h>
 #include <time.h>
 #include <pthread.h>
+#include <fcntl.h>
 
 static void get_cpu_model(char* buffer, size_t size){
 	FILE* f = fopen("/proc/cpuinfo", "r");
@@ -98,7 +99,7 @@ static void bench_cpu_mul(int num_threads){
 	double duree = fin - debut;
 	double total_ops = (double)iterations_per_threads * num_threads;
 	double mops = total_ops / duree / 1e6;
-	printf("CPU multi_thread : %.0f Millions_ops/s (%d threads, %.2f s)\n", mops, num_threads, duree);
+	printf("CPU multi_thread : %.0f Millions_operations /sec (%d threads, %.2f s)\n", mops, num_threads, duree);
 }
 
 static void RAM(void){
@@ -140,6 +141,84 @@ static void RAM(void){
 	free(buf);
 }
 
+static int write_all(int fd, const char* buf, size_t n){
+	size_t wrote = 0;
+	while(wrote < n){
+		ssize_t r = write(fd, buf + wrote, n - wrote);
+		if(r < 0){
+			return -1;
+		}
+		wrote+=(size_t)r;
+	}
+	return 0;
+}
+
+static int read_all(int fd, char* buf, size_t n){
+	size_t lu = 0;
+	while(lu < n ){
+		ssize_t r = read(fd, buf + lu, n - lu);
+		if(r < 0) return -1;
+		if(r == 0) break;
+		lu+=(size_t)r;
+	}
+	return 0;
+}
+
+static void bench_disk(void){
+	const char* path = "sysprobe_tmp.bin";
+	const size_t total = 256*1024*1024;
+	const size_t chunk = 4 * 1024 * 1024;
+
+	char* buf = (char*)malloc(chunk);
+	if(buf == NULL){
+		perror("don't allowed to access the memory, or the allocation maybe failed");
+	}
+	memset(buf, 0xAB, chunk);
+
+	int fd = open(path, O_CREAT | O_WRONLY | O_TRUNC, 0644);
+	if(fd < 0) { 
+		perror("don't allowed to open : 'sysprobe_tmp.bin'");
+		free(buf);
+		return;
+	}
+	double debut = now_sec();
+	for(size_t i = 0; i < total; i+=chunk){
+		if(write_all(fd, buf, chunk) != 0) {
+			perror("sysprobe : write");
+			break;
+		}
+	}
+	fsync(fd);
+	double fin = now_sec();
+	double write_mbs = (double)total / (fin - debut) / 1e6;
+	close(fd);
+
+	fd = open(path, O_RDONLY);
+	if(fd < 0){
+		perror("don't allowed to open : 'sysprobe_tmp.bin'");
+		free(buf);
+		return;
+	}
+
+	debut = now_sec();
+	for(size_t i = 0; i < total; i+=chunk){
+		if(read_all(fd, buf, chunk) != 0){
+			perror("sysprobe : read");
+			break;
+		}
+	}
+
+	fin = now_sec();
+	double read_mbs = (double)total / (fin - debut) / 1e6;
+	close(fd);
+
+	printf("Disk write 	: %.1f MB/s\n", write_mbs);
+	printf("Disk read	: %.1f MB/s\n", read_mbs);
+	
+	remove(path);
+	free(buf);
+}
+
 int main(void){
 
 	long cores = sysconf(_SC_NPROCESSORS_ONLN); //we're getting how much cpu cores are actually free;
@@ -161,6 +240,7 @@ int main(void){
 	bench_cpu();
 	bench_cpu_mul((int)cores);
 	RAM();
+	bench_disk();
 
 	return 0;
 }
