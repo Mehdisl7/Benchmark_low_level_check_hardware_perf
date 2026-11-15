@@ -199,6 +199,7 @@ static void bench_disk(void){
 		free(buf);
 		return;
 	}
+	posix_fadvise(fd, 0, 0, POSIX_FADV_DONTNEED);
 
 	debut = now_sec();
 	for(size_t i = 0; i < total; i+=chunk){
